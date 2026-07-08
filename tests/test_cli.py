@@ -20,7 +20,6 @@ from ._inline_snapshot import snapshot
 from .conftest import IsInstance, IsStr, TestEnv, try_import
 
 with try_import() as imports_successful:
-    from openai import OpenAIError
     from prompt_toolkit.input import create_pipe_input
     from prompt_toolkit.output import DummyOutput
     from prompt_toolkit.shortcuts import PromptSession
@@ -97,14 +96,17 @@ def test_agent_flag(
     assert mock_ask.call_args[0][0] is test_agent
 
 
-def test_agent_flag_no_model(env: TestEnv, create_test_module: Callable[..., None]):
+def test_agent_flag_no_model(capfd: CaptureFixture[str], env: TestEnv, create_test_module: Callable[..., None]):
     env.remove('OPENAI_API_KEY')
     test_agent = Agent()
     create_test_module(custom_agent=test_agent)
 
-    msg = 'The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable'
-    with pytest.raises(OpenAIError, match=msg):
-        cli(['--agent', 'test_module:custom_agent', 'hello'])
+    # The missing key now surfaces as a `UserError`, which the CLI reports cleanly instead of
+    # letting the provider SDK's exception escape as a traceback.
+    assert cli(['--agent', 'test_module:custom_agent', 'hello']) == 1
+    output = capfd.readouterr().out
+    assert 'Error initializing' in output
+    assert 'Set the `OPENAI_API_KEY` environment variable' in output
 
 
 def test_agent_flag_set_model(
